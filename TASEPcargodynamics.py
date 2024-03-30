@@ -1,22 +1,7 @@
 import numpy as np
 import random as random
 import sys
-import time
 
-def print_info():
- print("Parameters")
- print("l = ",l)
- print("u = ",u)
- print("b = ",b)
- print("N = ",N)
- print("m0 = ",m0)
- print()
- print("ms = ",ms)
- print("B = ",B)
- print("cs = ",cs)
- print("C = ",C)
- print("A = ",A)
- print("S = ",S)
 def Ncomputer():
  temp = 0
  for k in S:
@@ -24,24 +9,8 @@ def Ncomputer():
    temp += ms[k]*(Nb - cs[k])
  return temp
 def initialize_motor_distributions(M,L):
- global u
- m = [0 for i in range(L)]
- temp = M
- if M < L:
-  for i in range(L):
-   if temp == 0:
-    break
-   temp -=1
-   m[i] = 1
- else:
-  m = [int(M/L) for i in range(L)]
-  temp -= L*int(M/L)
-  if temp > 0:
-   for i in range(L):
-    if temp == 0:
-     break
-    temp -=1
-    m[i] += 1
+ global u  
+ m = np.zeros(L,int)
  b = [i for i,j in enumerate(m) if j != 0 and i > 0 and i < L-1]
  u = sum(m[1:L-1])
  if m[0] > 0:
@@ -207,13 +176,11 @@ def unbind_motor(x):
  if cs[x] == 0:
   global relax_time,step
   if step >= relax_time:
-   global num_of_fails
-   num_of_fails += 1
    return x   
-  return -1 
  if cs[x] < Nb and cs[x] > 0 and ms[x] != 0:      
   if x not in S:
    S.append(x)
+ return -1   
 def find_motor_to_bind():
  const1 = R*D/k_on
  const2 = P*D/k_on
@@ -246,7 +213,6 @@ def move_a_cargo():
  l -= 1
  C.remove(x)
  A.remove(x) 
-    
  # If the site chosen to update is the left boundary.
  if x == 0:
   cs[x+1] = cs[x]
@@ -294,9 +260,6 @@ def move_a_cargo():
    return -1
  if x == L - 1:
   global relax_time,step
-  if step >= relax_time:
-   global num_of_success
-   num_of_success += 1
   b -= cs[x]
   if x in S:
    S.remove(x) 
@@ -305,7 +268,10 @@ def move_a_cargo():
   if cs[x - 1] != 0:
    A.append(x-1)
    l += 1
-  return 0
+  if step >= relax_time:
+   return 0
+  else:
+    return -1
 #*********************
 # List of parameters *
 #*********************
@@ -317,21 +283,9 @@ L = 100
 Nb = 3
 
 p = 654
-k_walk = 1
+k_walk = 1.
 k_on = 0.0125 
 k_off = 0.00687
-
-relax_time = 0
-num_of_success = 0
-num_of_fails = 0
-
-step = 0
-
-l = 0  # length of A
-u = 0  # number of unbound motors in the bulk
-b = 0  # number of bound motors
-N = 0  # the sum of u_x(N_b - b_x)
-m0 = 0 #indicates whether the site is occupied by unbound motors
 
 fails_file = "fall_m_"+str(Motors)+"_alpha_"+str(alpha)+".txt"
 success_file = "success_m_"+str(Motors)+"_alpha_"+str(alpha)+".txt"
@@ -343,41 +297,23 @@ file2 = open(success_file, "w")
 file3 = open(ms_file, "w")
 file4 = open(cs_file, "w")
 
-num_of_success = 0
-num_of_fails = 0
-
-relax_time = 100000000
+relax_time = 0
 next_meansurement = relax_time
 measurements = 100000
-measurement_interval = 100000
+measurement_interval = 10000
 final_time = measurements*measurement_interval + relax_time
-'''
-# to test
-relax_time = 10000
-next_meansurement = relax_time
-measurements = 100000
-measurement_interval = 1000
-final_time = measurements*measurement_interval + relax_time
-'''
-'''
-relax_time = 1000
-next_meansurement = relax_time
-measurements = 1000
 
-measurement_interval = 1000
-final_time = measurements*measurement_interval + relax_time
-'''
 
 l = 0  # length of A
 u = 0  # number of unbound motors in the bulk
 b = 0  # number of bound motors
 N = 0  # the sum of u_x(N_b - b_x)
 m0 = 0 #indicates whether the site is occupied by unbound motors
-ms,B = initialize_motor_distributions(Motors,L)    # Initialized unbound motor dist. and occupied site dist.
-cs,C,A,c0 = initialize_cargo_distributions(L)      # Initialized cargo dist., occupied cargo dist, and empty adjacent site dist.
-S = initialize_S_distributions()                   # Initialized S dist.
-G = 0
-   
+
+ms,B = initialize_motor_distributions(Motors,L)   # Initialized unbound motor dist. and occupied site dist.
+cs,C,A,c0 = initialize_cargo_distributions(L)     # Initialized cargo dist., occupied cargo dist, and empty adjacent site dist.
+S = initialize_S_distributions()                  # Initialized S dist.
+
 step = 0
 while step <= final_time:
  step += 1
@@ -385,13 +321,16 @@ while step <= final_time:
   next_meansurement += measurement_interval
   file3.write(' '.join(str(m) for m in ms))
   file3.write('\n')
+  file3.flush()
   file4.write(' '.join(str(c) for c in cs))
   file4.write('\n')
+  file4.flush()
 
  R = random.random()
  N = Ncomputer()
  D = alpha*m0*(1 - c0) + 2.*p*u + p*ms[0] + p*ms[L-1] + k_off*b + k_on*N + k_walk*l 
  P = alpha*m0*(1 - c0)/D 
+
  if R < P:
   # a cargo will step on microtubule.
   add_cargo()
@@ -407,7 +346,7 @@ while step <= final_time:
   continue
  P += p*ms[0]/D
  if R < P + p*ms[L-1]/D:
-  # an unbound motor from the right boundary will diffuse.
+  # an unbound motor from the right boundary will diffuse. 
   move_right_boundary_motor()
   continue
  P += p*ms[L-1]/D
@@ -418,7 +357,8 @@ while step <= final_time:
    continue
   else:
    file1.write(str(val)+' '+str(step))
-   file1.write('\n')     
+   file1.write('\n') 
+   file1.flush()    
    continue
  P += k_off*b/D
  if R < P + k_on*N/D:
@@ -428,8 +368,10 @@ while step <= final_time:
  # an cargo will step forward if none of the above options were selected.
  val = move_a_cargo()
  if val == 0:
-  file2.write(str(val))
-  file2.write('\n')   
+  file2.write(str(step))
+  file2.write('\n')
+  file2.flush()
+
 file1.close()
 file2.close()
 file3.close()
