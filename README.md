@@ -8,4 +8,4 @@ python3 TASEPcargodynamics.py 1000 10
 where I have specified that I want the simulation to begin with 1000 motors and an alpha value of 1 where alpha is the rate at which cargo enters the microtubule.
 
 
-The lag in printing data to the .txt files was resolved by using the flush function.
+The lag in printing data to the .txt files was resolved by using the flush function. Again and again.
