@@ -1,5 +1,6 @@
 import numpy as np
 import random as random
+import time
 import sys
 
 def compute_N():
@@ -7,17 +8,33 @@ def compute_N():
  for k in S:
   Sum += ms[k]*(Nb - cs[k])
  return Sum
-def initialize_motor_distributions(M,L,name_of_ms_file):
+def initialize_motor_distributions(M,L):
  global u  
- m = np.loadtxt(name_of_ms_file,dtype = int)
+ m = [0 for i in range(L)]
+ temp = M
+ if M < L:
+  for i in range(L):
+   if temp == 0:
+    break
+   temp -=1
+   m[i] = 1
+ if M >= L:
+  m = [int(M/L) for i in range(L)]
+  temp -= L*int(M/L)
+  if temp > 0:
+   for i in range(L):
+    if temp == 0:
+     break
+    temp -=1
+    m[i] += 1
  b = [ind for ind,val in enumerate(m) if val != 0 and ind > 0 and ind < L-1]
  u = sum(m[1:L-1])
  global m0
  m0 = 1 if m[0] > 0 else 0
  return m,b
-def initialize_cargo_distributions(L,name_of_file):
+def initialize_cargo_distributions(L):
  global l,b
- c = np.loadtxt(name_of_file,dtype = int)
+ c = [0 for i in range(L)]
  C = [ind for ind,val in enumerate(c) if val > 0]
  A = [ind for ind in C if ind+1 < L and ind + 1 not in C]
  b = len(C)
@@ -73,10 +90,11 @@ def move_bulk_motor_right(Site):
    S.remove(Site)
  if cs[Right_site] > 0 and cs[Right_site] < Nb and Right_site not in S:
    S.append(Right_site)
- if Right_site < L-2:
+ if Right_site < L-1:
   if Right_site not in B:
    B.append(Right_site)
   return
+ # If we are here then 
  global u
  u -= 1 
 def move_left_boundary_motor(): 
@@ -108,7 +126,6 @@ def move_right_boundary_motor():
    S.append(Left_site)
   return  
  B.append(Left_site) 
-# everything above this point seems okay.
 def unbind_motor(x):   
  global b,u,l
  b -= 1
@@ -249,7 +266,7 @@ def diffuse_unbound_bulk_motor():
     move_bulk_motor_left(indx)
     return
    move_bulk_motor_right(indx)
-  return
+   return
   const2 += temp
 def find_motor_to_unbind():
  const1 = R*D/k_off
@@ -272,6 +289,7 @@ def find_motor_to_bind():
 #**************************************************  
 # This is where the main part of the code starts. *
 #**************************************************
+start=time.time()
 Motors = int(sys.argv[1])
 alpha = int(sys.argv[2])
 
@@ -282,9 +300,6 @@ p = 654
 k_walk = 1.
 k_on = 0.0125 
 k_off = 0.00687
-
-ms_file_to_import = "/Users/freddycisneros/Desktop/testingfaster/temp_ms_m_"+str(Motors)+"_alpha_"+str(alpha)+".txt"
-cs_file_to_import = "/Users/freddycisneros/Desktop/testingfaster/temp_cs_m_"+str(Motors)+"_alpha_"+str(alpha)+".txt"
 
 fails_file = "fast_fall_m_"+str(Motors)+"_alpha_"+str(alpha)+".txt"
 success_file = "fast_success_m_"+str(Motors)+"_alpha_"+str(alpha)+".txt"
@@ -308,11 +323,13 @@ b = 0   # number of bound motors
 N = 0   # the sum of u_x(N_b - b_x)
 m0 = 0  #indicates whether the site is occupied by unbound motors
 
-ms,B = initialize_motor_distributions(Motors,L,ms_file_to_import)   # Initialized unbound motor dist. and occupied site dist.
-cs,C,A,c0 = initialize_cargo_distributions(L,cs_file_to_import)     # Initialized cargo dist., occupied cargo dist, and empty adjacent site dist.
-S = initialize_S_distributions()                                    # Initialized S dist.
+ms,B = initialize_motor_distributions(Motors,L)   # Initialized unbound motor dist. and occupied site dist.
+cs,C,A,c0 = initialize_cargo_distributions(L)     # Initialized cargo dist., occupied cargo dist, and empty adjacent site dist.
+S = initialize_S_distributions()                  # Initialized S dist.
 
+cargo_step=0
 step = 0
+Last = 0
 while step <= final_time:
  step += 1
  if step >= next_meansurement:
@@ -324,31 +341,62 @@ while step <= final_time:
   file4.write('\n')
   file4.flush()
   
+ if sum(ms[1:L-1]) != u:
+  print("bulk motors and u not equal!",step,Last)
+  break
+  
+ for indx,val in enumerate(cs):
+  if val > 0 and indx not in C:
+   print("cs and C not consistent!",step,Last)
+   break
+  if val == 0 and indx in C:
+   print("cs and C not consistent!",step,Last)
+   break
+ 
+ if sum(ms) + sum(cs) != Motors:
+  print("sum(cs) + sum(ms) not equal to motor number!",step,Last)
+  break 
+  
+ for indx,val in enumerate(ms):
+  if indx in S:
+   if cs[indx] == 0 or val == 0:
+    print("S is not consistent with cs and ms!",step,Last)
+    print(S)
+    print(ms)
+    print(cs)
+    break
+
  N = compute_N()
  D = alpha*m0*(1 - c0) + 2.*p*u + p*ms[0] + p*ms[L-1] + k_off*b + k_on*N + k_walk*l 
  P = alpha*m0*(1 - c0)/D 
+ 
  R = random.random()
  if R < P:
   # A cargo will step onto the MT.
+  Last = 1
   add_cargo()
   continue
  if R < P + 2.*p*u/D:
   # An unbound bulk-motor will diffuse.
+  Last = 2
   diffuse_unbound_bulk_motor()
   continue
  P += 2.*p*u/D
  if R < P + p*ms[0]/D:
   # An unbound motor from the left boundary will diffuse.
+  Last = 3
   move_left_boundary_motor()
   continue
  P += p*ms[0]/D
  if R < P + p*ms[L-1]/D:
   # An unbound motor from the right boundary will diffuse. 
+  Last = 4
   move_right_boundary_motor()
   continue
  P += p*ms[L-1]/D
  if R < P + k_off*b/D:
   # A bound motor will unbind.
+  Last = 5
   val = find_motor_to_unbind()
   if val == -1:
    continue
@@ -359,10 +407,13 @@ while step <= final_time:
  P += k_off*b/D
  if R < P + k_on*N/D:
   # An unbound motor will attach to a cargo.
+  Last = 6
   find_motor_to_bind()
   continue
  # A cargo will step forward if none of the above options were selected.
+ Last = 7
  val = move_a_cargo()
+ cargo_step=step
  if val == 0:
   file2.write(str(step))
   file2.write('\n')
@@ -372,3 +423,5 @@ file1.close()
 file2.close()
 file3.close()
 file4.close()
+
+print(time.time()-start)
